@@ -26,7 +26,7 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <S, A, P> TransitionSystem<S, A, P> createTransitionSystem() {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement createTransitionSystem
+        return new TransitionSystemImpl<>();
     }
 
     @Override
@@ -278,54 +278,55 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <S1, S2, A, P> TransitionSystem<Pair<S1, S2>, A, P> interleave(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2) {
-        TransitionSystem<Pair<S1, S2>, A, P> ansTS = createTransitionSystem();
-        Set<Pair<S1, S2>> ansStatesSet = new HashSet<>(), ansInitStatesSet = new HashSet<>();
-        Set<A> ansActionsSet = new HashSet<>();
-        Set<P> ansAtomicPropositionsSet = new HashSet<>(), mergedLabels = new HashSet<>();
-        Set<Transition<S1, A>> traSet1;
-        Set<Transition<S2, A>> traSet2;
-
-        for(S1 state1 : ts1.getStates()){
-            for(S2 state2 : ts2.getStates()){
-                ansStatesSet.add(new Pair(state1, state2));
-            }
-        }
-
-        for(A action : ts1.getActions()){
-            ansActionsSet.add(action);
-        }
-        for(A action : ts2.getActions()){
-            ansActionsSet.add(action);
-        }
-
-        for(S1 initState1 : ts1.getInitialStates()){
-            for(S2 initState2 : ts2.getInitialStates()){
-                ansInitStatesSet.add(new Pair(initState1, initState2));
-            }
-        }
-
-        for(P ap : ts1.getAtomicPropositions()){
-            ansAtomicPropositionsSet.add(ap);
-        }
-        for(P ap : ts2.getAtomicPropositions()){
-            ansAtomicPropositionsSet.add(ap);
-        }
-
-        for(Pair<S1, S2> statePair : ansStatesSet){
-            mergedLabels.addAll(ts1.getLabel(statePair.first));
-            mergedLabels.addAll(ts2.getLabel(statePair.second));
-            for(P label : mergedLabels){
-                ansTS.addToLabel(statePair, label);
-            }
-        }
-
-        traSet1 = ts1.getTransitions();
-        traSet2 = ts2.getTransitions();
-        for(Transition<S1, A> tra : traSet1){
-            ts1.get
-        }
-
-        return ansTS;
+//        TransitionSystem<Pair<S1, S2>, A, P> ansTS = createTransitionSystem();
+//        Set<Pair<S1, S2>> ansStatesSet = new HashSet<>(), ansInitStatesSet = new HashSet<>();
+//        Set<A> ansActionsSet = new HashSet<>();
+//        Set<P> ansAtomicPropositionsSet = new HashSet<>(), mergedLabels = new HashSet<>();
+//        Set<Transition<S1, A>> traSet1;
+//        Set<Transition<S2, A>> traSet2;
+//
+//        for(S1 state1 : ts1.getStates()){
+//            for(S2 state2 : ts2.getStates()){
+//                ansStatesSet.add(new Pair(state1, state2));
+//            }
+//        }
+//
+//        for(A action : ts1.getActions()){
+//            ansActionsSet.add(action);
+//        }
+//        for(A action : ts2.getActions()){
+//            ansActionsSet.add(action);
+//        }
+//
+//        for(S1 initState1 : ts1.getInitialStates()){
+//            for(S2 initState2 : ts2.getInitialStates()){
+//                ansInitStatesSet.add(new Pair(initState1, initState2));
+//            }
+//        }
+//
+//        for(P ap : ts1.getAtomicPropositions()){
+//            ansAtomicPropositionsSet.add(ap);
+//        }
+//        for(P ap : ts2.getAtomicPropositions()){
+//            ansAtomicPropositionsSet.add(ap);
+//        }
+//
+//        for(Pair<S1, S2> statePair : ansStatesSet){
+//            mergedLabels.addAll(ts1.getLabel(statePair.first));
+//            mergedLabels.addAll(ts2.getLabel(statePair.second));
+//            for(P label : mergedLabels){
+//                ansTS.addToLabel(statePair, label);
+//            }
+//        }
+//
+//        traSet1 = ts1.getTransitions();
+//        traSet2 = ts2.getTransitions();
+//        for(Transition<S1, A> tra : traSet1){
+//            ts1.get
+//        }
+//
+//        return ansTS;
+        throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
