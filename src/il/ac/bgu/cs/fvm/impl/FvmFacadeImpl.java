@@ -125,13 +125,9 @@ public class FvmFacadeImpl implements FvmFacade {
     public <S, A, P> boolean isMaximalExecutionFragment(TransitionSystem<S, A, P> ts, AlternatingSequence<S, A> e) {
         boolean ans = isExecutionFragment(ts, e);
         AlternatingSequence<A, S> actionInHead;
-        S state;
-        A action;
 
         while(e.size() > 1) {
-            state = e.head();
             actionInHead = e.tail();
-            action = actionInHead.head();
             e = actionInHead.tail();
         }
 
@@ -278,59 +274,172 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <S1, S2, A, P> TransitionSystem<Pair<S1, S2>, A, P> interleave(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2) {
+        TransitionSystem<Pair<S1, S2>, A, P> ansTS = makeInterleaveNoTransitions(ts1, ts2);
+        Set<Pair<S1, S2>> ansStatesSet = makeInterleaveStatesSet(ts1, ts2);
+        Set<Transition<Pair<S1, S2>, A>> ansTransitions = new HashSet<>();
+
+        // ------------------ fill the ansTransitions and insert to ansTS -------------------
+        ansTransitions.addAll(makeInterleaveTransitions(ts1, ansStatesSet, ts1.getActions(), true));
+        ansTransitions.addAll(makeInterleaveTransitions(ts2, ansStatesSet, ts2.getActions(), false));
+        for(Transition<Pair<S1, S2>, A> tra : ansTransitions){
+            ansTS.addTransition(tra);
+        }
+
+        return ansTS;
+    }
+
+    private <S1, S2, A, P> TransitionSystem<Pair<S1, S2>, A, P> makeInterleaveNoTransitions(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2){
         TransitionSystem<Pair<S1, S2>, A, P> ansTS = createTransitionSystem();
-        Set<Pair<S1, S2>> ansStatesSet = new HashSet<>(), ansInitStatesSet = new HashSet<>();
-        Set<A> ansActionsSet = new HashSet<>();
-        Set<P> ansAtomicPropositionsSet = new HashSet<>(), mergedLabels = new HashSet<>();
-        Set<Transition<S1, A>> traSet1;
-        Set<Transition<S2, A>> traSet2;
+        Set<Pair<S1, S2>> ansStatesSet, ansInitStatesSet;
+
+        // ------------------ make ansStatesSet and insert to ansTS -------------------
+        ansStatesSet = makeInterleaveStatesSet(ts1, ts2);
+        ansTS.addAllStates(ansStatesSet);
+
+        // ------------------ make ansActionsSet and insert to ansTS -------------------
+        ansTS.addAllActions(makeInterleaveActionsSet(ts1, ts2));
+
+        // ------------------ fill ansInitStatesSet and insert to ansTS -------------------
+        ansInitStatesSet = makeInterleaveInitStatesSet(ts1, ts2);
+        for(Pair<S1, S2> initState : ansInitStatesSet){
+            ansTS.setInitial(initState, true);
+        }
+
+        // ------------------ fill ansAtomicPropositionsSet and insert to ansTS -------------------
+        ansTS.addAllAtomicPropositions(makeInterleaveAtomicPropSet(ts1, ts2));
+
+        // ------------------ make the labeling function and insert to ansTS -------------------
+        makeInterleaveLabelFunc(ansTS, ts1, ts2, ansStatesSet);
+
+        return ansTS;
+    }
+
+    private <S1, S2, A, P> Set<Pair<S1, S2>> makeInterleaveStatesSet(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2){
+        Set<Pair<S1, S2>> ansStatesSet = new HashSet<>();
 
         for(S1 state1 : ts1.getStates()){
             for(S2 state2 : ts2.getStates()){
-                ansStatesSet.add(new Pair(state1, state2));
+                ansStatesSet.add(new Pair<>(state1, state2));
             }
         }
 
-        for(A action : ts1.getActions()){
-            ansActionsSet.add(action);
-        }
-        for(A action : ts2.getActions()){
-            ansActionsSet.add(action);
-        }
+        return ansStatesSet;
+    }
+
+    private <S1, S2, A, P> Set<A> makeInterleaveActionsSet(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2){
+        Set<A> ansActionsSet = new HashSet<>();
+
+        ansActionsSet.addAll(ts1.getActions());
+        ansActionsSet.addAll(ts2.getActions());
+
+        return ansActionsSet;
+    }
+
+    private <S1, S2, A, P> Set<Pair<S1, S2>> makeInterleaveInitStatesSet(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2){
+        Set<Pair<S1, S2>> ansInitStatesSet = new HashSet<>();
 
         for(S1 initState1 : ts1.getInitialStates()){
             for(S2 initState2 : ts2.getInitialStates()){
-                ansInitStatesSet.add(new Pair(initState1, initState2));
+                ansInitStatesSet.add(new Pair<>(initState1, initState2));
             }
         }
 
-        for(P ap : ts1.getAtomicPropositions()){
-            ansAtomicPropositionsSet.add(ap);
-        }
-        for(P ap : ts2.getAtomicPropositions()){
-            ansAtomicPropositionsSet.add(ap);
-        }
+        return ansInitStatesSet;
+    }
+
+    private <S1, S2, A, P> Set<P> makeInterleaveAtomicPropSet(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2){
+        Set<P> ansAtomicPropositionsSet = new HashSet<>();
+
+        ansAtomicPropositionsSet.addAll(ts1.getAtomicPropositions());
+        ansAtomicPropositionsSet.addAll(ts2.getAtomicPropositions());
+
+        return ansAtomicPropositionsSet;
+    }
+
+    private <S1, S2, A, P> void makeInterleaveLabelFunc(TransitionSystem<Pair<S1, S2>, A, P> ansTS, TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2, Set<Pair<S1, S2>> ansStatesSet){
+        Set<P> mergedLabels;
 
         for(Pair<S1, S2> statePair : ansStatesSet){
+            mergedLabels = new HashSet<>();
             mergedLabels.addAll(ts1.getLabel(statePair.first));
             mergedLabels.addAll(ts2.getLabel(statePair.second));
             for(P label : mergedLabels){
                 ansTS.addToLabel(statePair, label);
             }
         }
+    }
 
-        traSet1 = ts1.getTransitions();
-        traSet2 = ts2.getTransitions();
-        for(Transition<S1, A> tra : traSet1){
-            ts1.get
+    private <S, S1, S2,  A, P> Set<Transition<Pair<S1, S2>, A>> makeInterleaveTransitions(TransitionSystem<S, A, P> ts, Set<Pair<S1, S2>> ansStatesSet, Set<A> ansActions, boolean first){
+        Set<Transition<Pair<S1, S2>, A>> ansTransitions = new HashSet<>();
+        Map<Pair<S, A>, Set<S>> postPerActionMap = new HashMap<>();
+        Transition<Pair<S1, S2>, A> ansTran;
+        Set<S> postSPerAction;
+        Pair<S, A> keyPair;
+
+        for(Pair<S1, S2> statePair : ansStatesSet){
+            for(A action : ansActions){
+                if(first) keyPair = new Pair<>((S)statePair.first, action);
+                else keyPair = new Pair<>((S)statePair.second, action);
+                postSPerAction = postPerActionMap.get(keyPair);
+                if(postSPerAction == null){
+                    if(first) postPerActionMap.put(keyPair, post(ts, (S)statePair.first, action));
+                    else postPerActionMap.put(keyPair, post(ts, (S)statePair.second, action));
+                }
+                else{
+                    for(S to : postSPerAction){
+                        if(first) ansTran = new Transition<>(statePair, action, new Pair<>((S1)to, statePair.second));
+                        else ansTran = new Transition<>(statePair, action, new Pair<>(statePair.first, (S2)to));
+                        ansTransitions.add(ansTran);
+                    }
+                }
+            }
+        }
+
+        return ansTransitions;
+    }
+
+    @Override
+    public <S1, S2, A, P> TransitionSystem<Pair<S1, S2>, A, P> interleave(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2, Set<A> handShakingActions) {
+        TransitionSystem<Pair<S1, S2>, A, P> ansTS = makeInterleaveNoTransitions(ts1, ts2);
+        Set<Pair<S1, S2>> ansStatesSet = makeInterleaveStatesSet(ts1, ts2);
+        Set<Transition<Pair<S1, S2>, A>> ansTransitions = new HashSet<>();
+
+        // ------------------ fill the ansTransitions and insert to ansTS -------------------
+        ansTransitions.addAll(makeInterleaveTransitions(ts1, ansStatesSet, ts1.getActions(), true));
+        ansTransitions.addAll(makeInterleaveTransitions(ts2, ansStatesSet, ts2.getActions(), false));
+        makeInterleaveTransitionsHandShake(ansTransitions, ts1, ts2, handShakingActions);
+        for(Transition<Pair<S1, S2>, A> tra : ansTransitions){
+            ansTS.addTransition(tra);
         }
 
         return ansTS;
     }
 
-    @Override
-    public <S1, S2, A, P> TransitionSystem<Pair<S1, S2>, A, P> interleave(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2, Set<A> handShakingActions) {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement interleave
+    private <S, S1, S2, A, P> void makeInterleaveTransitionsHandShake(Set<Transition<Pair<S1, S2>, A>> ansTransitions, TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2, Set<A> handShakingActions){
+        Pair<S1, S2> from, to;
+
+        for(Transition<Pair<S1, S2>, A> tra : ansTransitions){
+            if(handShakingActions.contains(tra.getAction())){
+                from = tra.getFrom();
+                to = tra.getTo();
+                if(from.first.equals(to.first)) removeAndAddHSTrans(ansTransitions, ts1, tra, from.first, true);
+                else if(from.second.equals(to.second)) removeAndAddHSTrans(ansTransitions, ts2, tra, from.second, false);
+            }
+        }
+    }
+
+    private <S, S1, S2, A, P> void removeAndAddHSTrans(Set<Transition<Pair<S1, S2>, A>> ansTransitions, TransitionSystem<S, A, P> ts, Transition<Pair<S1, S2>, A> tra, S sameState, boolean first){
+        Set<S> postWithAction = post(ts, sameState, tra.getAction());
+        Transition<Pair<S1, S2>, A> toInsert;
+
+        if(postWithAction.size() > 0){
+            ansTransitions.remove(tra);
+            for(S postState : postWithAction){
+                if(first) toInsert = new Transition<>(tra.getFrom(), tra.getAction(), new Pair<>((S1)postState, tra.getTo().second));
+                else toInsert = new Transition<>(tra.getFrom(), tra.getAction(), new Pair<>(tra.getTo().first, (S2)postState));
+                ansTransitions.add(toInsert);
+            }
+        }
     }
 
     @Override
