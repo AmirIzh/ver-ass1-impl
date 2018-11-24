@@ -322,7 +322,7 @@ public class FvmFacadeImpl implements FvmFacade {
         traSet1 = ts1.getTransitions();
         traSet2 = ts2.getTransitions();
         for(Transition<S1, A> tra : traSet1){
-            // צריך לעבור
+            ts1.get
         }
 
         return ansTS;
