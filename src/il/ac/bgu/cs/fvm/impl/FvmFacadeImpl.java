@@ -8,6 +8,7 @@ import il.ac.bgu.cs.fvm.circuits.Circuit;
 import il.ac.bgu.cs.fvm.ltl.LTL;
 import il.ac.bgu.cs.fvm.programgraph.ActionDef;
 import il.ac.bgu.cs.fvm.programgraph.ConditionDef;
+import il.ac.bgu.cs.fvm.programgraph.PGTransition;
 import il.ac.bgu.cs.fvm.programgraph.ProgramGraph;
 import il.ac.bgu.cs.fvm.transitionsystem.AlternatingSequence;
 import il.ac.bgu.cs.fvm.transitionsystem.Transition;
@@ -336,7 +337,7 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <L, A> ProgramGraph<L, A> createProgramGraph() {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement createProgramGraph
+        return new ProgramGraphImpl<>();
     }
 
     @Override
@@ -351,7 +352,67 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <L, A> TransitionSystem<Pair<L, Map<String, Object>>, A, String> transitionSystemFromProgramGraph(ProgramGraph<L, A> pg, Set<ActionDef> actionDefs, Set<ConditionDef> conditionDefs) {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement transitionSystemFromProgramGraph
+        TransitionSystem<Pair<L, Map<String, Object>>, A, String> transitionSystem = createTransitionSystem();
+
+        for(L location: pg.getLocations()){
+            transitionSystem.addAtomicProposition(location.toString());
+        }
+
+        // get all initial assignments
+        Set<Map<String, Object>> initialAssignments = new HashSet<>();
+        for (List<String> initialization : pg.getInitalizations()) {
+            Map<String, Object> assignment = new HashMap<>();
+            for (String varInit : initialization) {
+                assignment = ActionDef.effect(actionDefs, assignment, varInit); //The varInit here is the "action"
+            }
+            initialAssignments.add(assignment);
+        }
+
+        // Set initial States to the transitionSystem
+        for(L initLoc : pg.getInitialLocations()){
+            for(Map<String, Object> initAss: initialAssignments) {
+                Pair<L, Map<String, Object>> state = new Pair<>(initLoc, initAss);
+                transitionSystem.addState(state);
+                transitionSystem.setInitial(state, true);
+            }
+        }
+
+        Set<Pair<L, Map<String, Object>>> currStates = new HashSet<>(transitionSystem.getInitialStates());
+        while(!currStates.isEmpty()){
+            Pair<L, Map<String, Object>> currState = currStates.iterator().next();
+            L initLoc = currState.getFirst();
+            for(PGTransition<L,A> transition: pg.getTransitions()){
+                if(initLoc.equals(transition.getFrom())){
+                    Map<String,Object> initEval = currState.getSecond();
+                    String condition = transition.getCondition();
+                    if(ConditionDef.evaluate(conditionDefs,initEval,condition)){ // if the condition is valid for the current eval
+//                        transitionSystem.addAtomicProposition(condition);
+//                        transitionSystem.addToLabel(currState, condition);
+                        A action = transition.getAction();
+                        Map<String,Object> evalAfterEffect = ActionDef.effect(actionDefs,initEval,action);
+                        Pair<L, Map<String, Object>> newState = new Pair<>(transition.getTo(),evalAfterEffect);
+                        if(!transitionSystem.getStates().contains(newState)) {
+                            currStates.add(newState);
+                        }
+                        transitionSystem.addState(newState);
+                        Transition<Pair<L, Map<String, Object>>, A> newTransition = new Transition<>(currState,action, newState);
+                        transitionSystem.addAction(action);
+                        transitionSystem.addTransition(newTransition);
+                    }
+                }
+            }
+            currStates.remove(currState);
+        }
+
+        for(Pair<L, Map<String, Object>> state: transitionSystem.getStates()){
+            transitionSystem.addToLabel(state, state.getFirst().toString());
+            for(String var : state.getSecond().keySet()){
+                String varAssignmentExp = var + " = " + state.getSecond().get(var);
+                transitionSystem.addAtomicProposition(varAssignmentExp);
+                transitionSystem.addToLabel(state,varAssignmentExp);
+            }
+        }
+        return transitionSystem;
     }
 
     @Override
