@@ -18,6 +18,7 @@ public class ProgramGraphImpl<L,A> implements ProgramGraph<L,A> {
 
 
     public ProgramGraphImpl(){
+        this.name = "";
         this.locations = new HashSet<>();
         this.initialLocations = new HashSet<>();
         this.initializations = new HashSet<>();

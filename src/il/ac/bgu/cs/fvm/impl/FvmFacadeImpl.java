@@ -342,8 +342,71 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <L1, L2, A> ProgramGraph<Pair<L1, L2>, A> interleave(ProgramGraph<L1, A> pg1, ProgramGraph<L2, A> pg2) {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement interleave
+        ProgramGraph<Pair<L1, L2>, A> interleavedProgramGraph = new ProgramGraphImpl<>();
+
+        Set<Pair<L1,L2>> locationPairs = locationsCartesianProduct(pg1.getLocations(), pg2.getLocations());
+        for(Pair<L1,L2> pair: locationPairs){
+            interleavedProgramGraph.addLocation(pair);
+        }
+
+        Set<Pair<L1,L2>> initialLocationPairs = locationsCartesianProduct(pg1.getInitialLocations(), pg2.getInitialLocations());
+        for(Pair<L1,L2> pair: initialLocationPairs){
+            interleavedProgramGraph.setInitial(pair, true);
+        }
+
+        for(List<String> initialization: interleaveInitializations(pg1.getInitalizations(),pg2.getInitalizations())){
+            interleavedProgramGraph.addInitalization(initialization);
+        }
+
+        for(PGTransition<L1,A> transition: pg1.getTransitions()){
+            for(Pair<L1,L2> location: interleavedProgramGraph.getLocations()){
+                if(location.getFirst().equals(transition.getFrom())){
+                    PGTransition<Pair<L1,L2>,A> newTransition = new PGTransition<>(location, transition.getCondition(), transition.getAction(), new Pair<>(transition.getTo(),location.getSecond()));
+                    interleavedProgramGraph.addTransition(newTransition);
+                }
+            }
+        }
+
+        for(PGTransition<L2,A> transition: pg2.getTransitions()){
+            for(Pair<L1,L2> location: interleavedProgramGraph.getLocations()){
+                if(location.getSecond().equals(transition.getFrom())){
+                    PGTransition<Pair<L1,L2>,A> newTransition = new PGTransition<>(location, transition.getCondition(), transition.getAction(), new Pair<>(location.getFirst(),transition.getTo()));
+                    interleavedProgramGraph.addTransition(newTransition);
+                }
+            }
+        }
+
+        return interleavedProgramGraph;
+
+
     }
+
+    private Set<List<String>> interleaveInitializations(Set<List<String>> initializations1, Set<List<String>> initializations2){
+        Set<List<String>> interleavedInitializations = new HashSet<>();
+        for(List<String> initialization1: initializations1){
+            for(List<String> initialization2: initializations2){
+                List<String> initializationsList = new LinkedList<>();
+                initializationsList.addAll(initialization1);
+                initializationsList.addAll(initialization2);
+                interleavedInitializations.add(	new LinkedList<>(initializationsList));
+            }
+        }
+        return interleavedInitializations;
+    }
+
+
+
+    private <L1, L2> Set<Pair<L1,L2>> locationsCartesianProduct(Set<L1> locations1, Set<L2> locations2) {
+        Set<Pair<L1, L2>> locations = new HashSet<>();
+        for (L1 l1: locations1) {
+            for(L2 l2: locations2){
+                locations.add(new Pair<>(l1,l2));
+            }
+        }
+        return locations;
+    }
+
+
 
     @Override
     public TransitionSystem<Pair<Map<String, Boolean>, Map<String, Boolean>>, Map<String, Boolean>, Object> transitionSystemFromCircuit(Circuit c) {
@@ -354,9 +417,9 @@ public class FvmFacadeImpl implements FvmFacade {
     public <L, A> TransitionSystem<Pair<L, Map<String, Object>>, A, String> transitionSystemFromProgramGraph(ProgramGraph<L, A> pg, Set<ActionDef> actionDefs, Set<ConditionDef> conditionDefs) {
         TransitionSystem<Pair<L, Map<String, Object>>, A, String> transitionSystem = createTransitionSystem();
 
-        for(L location: pg.getLocations()){
-            transitionSystem.addAtomicProposition(location.toString());
-        }
+//        for(L location: pg.getLocations()){
+//            transitionSystem.addAtomicProposition(location.toString());
+//        }
 
         // get all initial assignments
         Set<Map<String, Object>> initialAssignments = new HashSet<>();
@@ -380,6 +443,7 @@ public class FvmFacadeImpl implements FvmFacade {
         Set<Pair<L, Map<String, Object>>> currStates = new HashSet<>(transitionSystem.getInitialStates());
         while(!currStates.isEmpty()){
             Pair<L, Map<String, Object>> currState = currStates.iterator().next();
+            transitionSystem.addAtomicProposition(currState.getFirst().toString());
             L initLoc = currState.getFirst();
             for(PGTransition<L,A> transition: pg.getTransitions()){
                 if(initLoc.equals(transition.getFrom())){
