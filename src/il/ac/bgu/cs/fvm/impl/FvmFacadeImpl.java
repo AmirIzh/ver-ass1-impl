@@ -375,9 +375,7 @@ public class FvmFacadeImpl implements FvmFacade {
                 }
             }
         }
-
         return interleavedProgramGraph;
-
 
     }
 
@@ -394,8 +392,6 @@ public class FvmFacadeImpl implements FvmFacade {
         return interleavedInitializations;
     }
 
-
-
     private <L1, L2> Set<Pair<L1,L2>> locationsCartesianProduct(Set<L1> locations1, Set<L2> locations2) {
         Set<Pair<L1, L2>> locations = new HashSet<>();
         for (L1 l1: locations1) {
@@ -406,8 +402,6 @@ public class FvmFacadeImpl implements FvmFacade {
         return locations;
     }
 
-
-
     @Override
     public TransitionSystem<Pair<Map<String, Boolean>, Map<String, Boolean>>, Map<String, Boolean>, Object> transitionSystemFromCircuit(Circuit c) {
         throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement transitionSystemFromCircuit
@@ -416,10 +410,6 @@ public class FvmFacadeImpl implements FvmFacade {
     @Override
     public <L, A> TransitionSystem<Pair<L, Map<String, Object>>, A, String> transitionSystemFromProgramGraph(ProgramGraph<L, A> pg, Set<ActionDef> actionDefs, Set<ConditionDef> conditionDefs) {
         TransitionSystem<Pair<L, Map<String, Object>>, A, String> transitionSystem = createTransitionSystem();
-
-//        for(L location: pg.getLocations()){
-//            transitionSystem.addAtomicProposition(location.toString());
-//        }
 
         // get all initial assignments
         Set<Map<String, Object>> initialAssignments = new HashSet<>();
@@ -450,8 +440,6 @@ public class FvmFacadeImpl implements FvmFacade {
                     Map<String,Object> initEval = currState.getSecond();
                     String condition = transition.getCondition();
                     if(ConditionDef.evaluate(conditionDefs,initEval,condition)){ // if the condition is valid for the current eval
-//                        transitionSystem.addAtomicProposition(condition);
-//                        transitionSystem.addToLabel(currState, condition);
                         A action = transition.getAction();
                         Map<String,Object> evalAfterEffect = ActionDef.effect(actionDefs,initEval,action);
                         Pair<L, Map<String, Object>> newState = new Pair<>(transition.getTo(),evalAfterEffect);
