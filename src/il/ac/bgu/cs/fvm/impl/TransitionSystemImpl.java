@@ -43,21 +43,14 @@ public class TransitionSystemImpl<STATE,ACTION,ATOMIC_PROPOSITION>  implements T
 
     @Override
     public  void setInitial(STATE aState, boolean isInitial) throws StateNotFoundException {
-        if(isInitial){
-            if(this.states.contains(aState)){
-                initials.add(aState);
-            }
-            else{
-             throw new StateNotFoundException(aState);
-            }
+        if(!this.states.contains(aState)){
+            throw new StateNotFoundException(aState);
         }
-        else{
-            if(this.initials.contains(aState)){
-                this.initials.remove(aState);
-            }
-            else if(!this.states.contains(aState)){
-                throw new StateNotFoundException(aState);
-            }
+        if(isInitial){
+            initials.add(aState);
+        }
+        else if(this.initials.contains(aState)){
+            this.initials.remove(aState);
         }
     }
 
@@ -98,7 +91,7 @@ public class TransitionSystemImpl<STATE,ACTION,ATOMIC_PROPOSITION>  implements T
             throw new StateNotFoundException(s);
         }
         else if(!this.atomicPropositions.contains(l)){
-            throw new FVMException("The label (" +l+ ") is not an atomic proposition." );
+            throw new InvalidLablingPairException(s, l);
         }
         else{
             this.labelingFunction.get(s).add(l);

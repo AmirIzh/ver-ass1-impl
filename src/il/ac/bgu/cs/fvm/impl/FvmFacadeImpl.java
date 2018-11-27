@@ -5,6 +5,8 @@ import il.ac.bgu.cs.fvm.automata.Automaton;
 import il.ac.bgu.cs.fvm.automata.MultiColorAutomaton;
 import il.ac.bgu.cs.fvm.channelsystem.ChannelSystem;
 import il.ac.bgu.cs.fvm.circuits.Circuit;
+import il.ac.bgu.cs.fvm.exceptions.ActionNotFoundException;
+import il.ac.bgu.cs.fvm.exceptions.StateNotFoundException;
 import il.ac.bgu.cs.fvm.ltl.LTL;
 import il.ac.bgu.cs.fvm.programgraph.ActionDef;
 import il.ac.bgu.cs.fvm.programgraph.ConditionDef;
@@ -95,8 +97,10 @@ public class FvmFacadeImpl implements FvmFacade {
 
         while(e.size() > 1){
             state = e.head();
+            if(!ts.getStates().contains(state)) throw new StateNotFoundException(state);
             actionInHead = e.tail();
             action = actionInHead.head();
+            if(!ts.getActions().contains(action)) throw new ActionNotFoundException(action);
             e = actionInHead.tail();
 
             if(post(ts, state, action).size() == 0){
@@ -152,11 +156,14 @@ public class FvmFacadeImpl implements FvmFacade {
         Set<S> ans = new HashSet<>();
         Set<? extends Transition<S, ?>> traSet = ts.getTransitions();
 
+        if(!ts.getStates().contains(s)) throw new StateNotFoundException(s);
+
         for(Transition<S, ?> tra : traSet){
-            if(tra.getFrom().equals(s)){
+            if(tra.getFrom().equals(s))
                 ans.add(tra.getTo());
-            }
+
         }
+
         return ans;
     }
 
@@ -204,6 +211,8 @@ public class FvmFacadeImpl implements FvmFacade {
         Set<S> ans = new HashSet<>();
         Set<? extends Transition<S, ?>> traSet = ts.getTransitions();
 
+        if(!ts.getStates().contains(s)) throw new StateNotFoundException(s);
+
         for(Transition<S, ?> tra : traSet){
             if(tra.getTo().equals(s)){
                 ans.add(tra.getFrom());
@@ -218,9 +227,8 @@ public class FvmFacadeImpl implements FvmFacade {
         Set<? extends Transition<S, ?>> traSet = ts.getTransitions();
 
         for(Transition<S, ?> tra : traSet){
-            if (c.contains(tra.getTo())) {
+            if (c.contains(tra.getTo()))
                 ans.add(tra.getFrom());
-            }
         }
         return ans;
     }
@@ -230,10 +238,11 @@ public class FvmFacadeImpl implements FvmFacade {
         Set<S> ans = new HashSet<>();
         Set<? extends Transition<S, ?>> traSet = ts.getTransitions();
 
+        if(!ts.getStates().contains(s)) throw new StateNotFoundException(s);
+
         for(Transition<S, ?> tra : traSet){
-            if(tra.getTo().equals(s) && tra.getAction().equals(a)){
+            if(tra.getTo().equals(s) && tra.getAction().equals(a))
                 ans.add(tra.getFrom());
-            }
         }
         return ans;
     }
@@ -244,9 +253,9 @@ public class FvmFacadeImpl implements FvmFacade {
         Set<? extends Transition<S, ?>> traSet = ts.getTransitions();
 
         for(Transition<S, ?> tra : traSet){
-            if (c.contains(tra.getTo()) && tra.getAction().equals(a)) {
+            if (c.contains(tra.getTo()) && tra.getAction().equals(a))
                 ans.add(tra.getFrom());
-            }
+
         }
         return ans;
     }
@@ -385,12 +394,11 @@ public class FvmFacadeImpl implements FvmFacade {
                     if(first) postPerActionMap.put(keyPair, post(ts, (S)statePair.first, action));
                     else postPerActionMap.put(keyPair, post(ts, (S)statePair.second, action));
                 }
-                else{
-                    for(S to : postSPerAction){
-                        if(first) ansTran = new Transition<>(statePair, action, new Pair<>((S1)to, statePair.second));
-                        else ansTran = new Transition<>(statePair, action, new Pair<>(statePair.first, (S2)to));
-                        ansTransitions.add(ansTran);
-                    }
+                postSPerAction = postPerActionMap.get(keyPair);
+                for(S to : postSPerAction){
+                    if (first) ansTran = new Transition<>(statePair, action, new Pair<>((S1) to, statePair.second));
+                    else ansTran = new Transition<>(statePair, action, new Pair<>(statePair.first, (S2) to));
+                    ansTransitions.add(ansTran);
                 }
             }
         }
@@ -400,7 +408,68 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <S1, S2, A, P> TransitionSystem<Pair<S1, S2>, A, P> interleave(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2, Set<A> handShakingActions) {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement interleave
+        TransitionSystem<Pair<S1, S2>, A, P> ansTS = makeInterleaveNoTransitions(ts1, ts2);
+        Set<Pair<S1, S2>> ansStatesSet = makeInterleaveStatesSet(ts1, ts2), reachableStates, allStates = new HashSet<>();
+        Set<Transition<Pair<S1, S2>, A>> ansTransitions = new HashSet<>(), allTrans = new HashSet<>();
+
+        // ------------------ fill the ansTransitions and insert to ansTS -------------------
+        ansTransitions.addAll(makeInterleaveTransitions(ts1, ansStatesSet, ts1.getActions(), true));
+        ansTransitions.addAll(makeInterleaveTransitions(ts2, ansStatesSet, ts2.getActions(), false));
+        makeInterleaveTransitionsHandShake(ansTransitions, ts1, ts2, handShakingActions);
+        for(Transition<Pair<S1, S2>, A> tra : ansTransitions){
+            ansTS.addTransition(tra);
+        }
+
+        // ------------------ removing non-reachable states and transitions -------------------
+        reachableStates = reach(ansTS);
+        allTrans.addAll(ansTransitions);
+        for(Transition<Pair<S1, S2>, A> tra : allTrans){
+            if(!reachableStates.contains(tra.getTo()) || !reachableStates.contains(tra.getFrom())){
+                ansTS.removeTransition(tra);
+            }
+        }
+        allStates.addAll(ansTS.getStates());
+        for(Pair<S1, S2> state : allStates){
+            if(!reachableStates.contains(state)){
+                ansTS.removeState(state);
+            }
+        }
+
+
+        return ansTS;
+    }
+
+    private <S, S1, S2, A, P> void makeInterleaveTransitionsHandShake(Set<Transition<Pair<S1, S2>, A>> ansTransitions, TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2, Set<A> handShakingActions){
+        Pair<S1, S2> from, to;
+        Set<Transition<Pair<S1, S2>, A>> transToInsert = new HashSet<>();
+        Set<Transition<Pair<S1, S2>, A>> transToRemove = new HashSet<>();
+
+        for(Transition<Pair<S1, S2>, A> tra : ansTransitions){
+            if(handShakingActions.contains(tra.getAction())){
+                from = tra.getFrom();
+                to = tra.getTo();
+                if(from.first.equals(to.first)) removeAndAddHSTrans(transToInsert, transToRemove, ts1, tra, from.first, true);
+                else if(from.second.equals(to.second)) removeAndAddHSTrans(transToInsert, transToRemove, ts2, tra, from.second, false);
+            }
+        }
+        ansTransitions.removeAll(transToRemove);
+        ansTransitions.addAll(transToInsert);
+
+
+    }
+
+    private <S, S1, S2, A, P> void removeAndAddHSTrans(Set<Transition<Pair<S1, S2>, A>> transToInsert, Set<Transition<Pair<S1, S2>, A>> transToRemove,  TransitionSystem<S, A, P> ts, Transition<Pair<S1, S2>, A> tra, S sameState, boolean first){
+        Set<S> postWithAction = post(ts, sameState, tra.getAction());
+        Transition<Pair<S1, S2>, A> toInsert;
+
+        transToRemove.add(tra);
+        if(postWithAction.size() > 0){
+            for(S postState : postWithAction){
+                if(first) toInsert = new Transition<>(tra.getFrom(), tra.getAction(), new Pair<>((S1)postState, tra.getTo().second));
+                else toInsert = new Transition<>(tra.getFrom(), tra.getAction(), new Pair<>(tra.getTo().first, (S2)postState));
+                transToInsert.add(toInsert);
+            }
+        }
     }
 
     @Override
@@ -415,7 +484,107 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public TransitionSystem<Pair<Map<String, Boolean>, Map<String, Boolean>>, Map<String, Boolean>, Object> transitionSystemFromCircuit(Circuit c) {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement transitionSystemFromCircuit
+        TransitionSystem<Pair<Map<String, Boolean>, Map<String, Boolean>>, Map<String, Boolean>, Object> ansTS = new TransitionSystemImpl<>();
+        Set<Pair<Map<String, Boolean>, Map<String, Boolean>>> states = new HashSet<>();
+        Map<String, Boolean> regMap;
+        Set<Map<String, Boolean>> actions = new HashSet<>();
+        Set<Pair<Map<String, Boolean>, Map<String, Boolean>>> statesCopy;
+        Set<String> inputs = c.getInputPortNames(), registers = c.getRegisterNames(), outputs = c.getOutputPortNames();
+        Pair<Map<String, Boolean>, Map<String, Boolean>> newState;
+        Set<String> labels;
+        Transition<Pair<Map<String, Boolean>, Map<String, Boolean>>, Map<String, Boolean>> newTran;
+        Set<Transition<Pair<Map<String, Boolean>, Map<String, Boolean>>, Map<String, Boolean>>> transitions = new HashSet<>();
+        int actionsSize, changeNumber, x = 1, mapCounter, oldStateCopySize = 0, finalStateSize;
+
+
+        // ------------------ make the actions, and insert to ansTS -------------------
+        actionsSize = (int)Math.pow(2, inputs.size());
+        Map<String, Boolean>[] actionsArr = new HashMap[actionsSize];
+        Object[] inputsArr = inputs.toArray();
+        for(int i = 0; i < actionsSize; i++){
+            actionsArr[i] = new HashMap<>();
+        }
+        changeNumber = actionsSize;
+        for(int i = 0; i < inputs.size(); i++, x = x * 2){
+            mapCounter = 0;
+            changeNumber = changeNumber / 2;
+            for(int j = 0; j < x; j++){
+                for(int t = changeNumber; t > 0; t = t / 2){
+                    actionsArr[mapCounter].put((String)inputsArr[i], true);// לשים טרו
+                    mapCounter++;
+                }
+                for(int t = changeNumber; t > 0; t = t / 2){
+                    actionsArr[mapCounter].put((String)inputsArr[i], false);// לשים פולס
+                    mapCounter++;
+                }
+            }
+        }
+        ansTS.addAllActions(actionsArr);
+
+        // ------------------ make the initial states, and insert to ansTS -------------------
+        while(states.size() < Math.pow(2, inputs.size())){
+            for(Map<String, Boolean> action : ansTS.getActions()){
+                regMap = new HashMap<>();
+                for(String reg : registers){
+                    regMap.put(reg, false);
+                }
+                states.add(new Pair<>(action, regMap));
+            }
+        }
+        ansTS.addAllStates(states);
+        for(Pair<Map<String, Boolean>, Map<String, Boolean>> state : states){
+            ansTS.setInitial(state, true);
+        }
+
+        // ------------------ make the other states + transitions, and insert to ansTS -------------------
+        statesCopy = new HashSet<>();
+        statesCopy.addAll(states);
+        finalStateSize =  Integer.MAX_VALUE / ansTS.getActions().size();
+        while(transitions.size() < (finalStateSize * ansTS.getActions().size())){
+            oldStateCopySize = statesCopy.size();
+            for(Pair<Map<String, Boolean>, Map<String, Boolean>> state : statesCopy){
+                for(Map<String, Boolean> action : ansTS.getActions()){
+                    newState = new Pair<>(action, c.updateRegisters(state.first, state.second));
+                    states.add(newState);
+                    newTran = new Transition<>(state, action, newState);
+                    transitions.add(newTran);
+                }
+            }
+            statesCopy.addAll(states);
+            if(oldStateCopySize == statesCopy.size()){
+                finalStateSize = oldStateCopySize;
+            }
+        }
+        ansTS.addAllStates(states);
+        for(Transition<Pair<Map<String, Boolean>, Map<String, Boolean>>, Map<String, Boolean>> tra : transitions)
+            ansTS.addTransition(tra);
+
+
+        // ------------------ make the atomic props, and insert to ansTS -------------------
+        ansTS.addAllAtomicPropositions(inputs.toArray());
+        ansTS.addAllAtomicPropositions(registers.toArray());
+        ansTS.addAllAtomicPropositions(outputs.toArray());
+
+        // ------------------ label the states in ansTS -------------------
+        for(Pair<Map<String, Boolean>, Map<String, Boolean>> state : states){
+            labels = new HashSet<>();
+            for(String input : inputs){
+                if(state.first.get(input))
+                    labels.add(input);
+            }
+            for(String reg : registers){
+                if(state.second.get(reg))
+                    labels.add(reg);
+            }
+            for(String output : outputs){
+                if(c.computeOutputs(state.first, state.second).get(output))
+                    labels.add(output);
+            }
+            for(String label : labels)
+                ansTS.addToLabel(state, label);
+        }
+
+        return ansTS;
     }
 
     @Override
