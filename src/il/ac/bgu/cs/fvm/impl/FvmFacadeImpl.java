@@ -26,7 +26,7 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <S, A, P> TransitionSystem<S, A, P> createTransitionSystem() {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement createTransitionSystem
+        return new TransitionSystemImpl<>();
     }
 
     @Override
@@ -400,46 +400,7 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <S1, S2, A, P> TransitionSystem<Pair<S1, S2>, A, P> interleave(TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2, Set<A> handShakingActions) {
-        TransitionSystem<Pair<S1, S2>, A, P> ansTS = makeInterleaveNoTransitions(ts1, ts2);
-        Set<Pair<S1, S2>> ansStatesSet = makeInterleaveStatesSet(ts1, ts2);
-        Set<Transition<Pair<S1, S2>, A>> ansTransitions = new HashSet<>();
-
-        // ------------------ fill the ansTransitions and insert to ansTS -------------------
-        ansTransitions.addAll(makeInterleaveTransitions(ts1, ansStatesSet, ts1.getActions(), true));
-        ansTransitions.addAll(makeInterleaveTransitions(ts2, ansStatesSet, ts2.getActions(), false));
-        makeInterleaveTransitionsHandShake(ansTransitions, ts1, ts2, handShakingActions);
-        for(Transition<Pair<S1, S2>, A> tra : ansTransitions){
-            ansTS.addTransition(tra);
-        }
-
-        return ansTS;
-    }
-
-    private <S, S1, S2, A, P> void makeInterleaveTransitionsHandShake(Set<Transition<Pair<S1, S2>, A>> ansTransitions, TransitionSystem<S1, A, P> ts1, TransitionSystem<S2, A, P> ts2, Set<A> handShakingActions){
-        Pair<S1, S2> from, to;
-
-        for(Transition<Pair<S1, S2>, A> tra : ansTransitions){
-            if(handShakingActions.contains(tra.getAction())){
-                from = tra.getFrom();
-                to = tra.getTo();
-                if(from.first.equals(to.first)) removeAndAddHSTrans(ansTransitions, ts1, tra, from.first, true);
-                else if(from.second.equals(to.second)) removeAndAddHSTrans(ansTransitions, ts2, tra, from.second, false);
-            }
-        }
-    }
-
-    private <S, S1, S2, A, P> void removeAndAddHSTrans(Set<Transition<Pair<S1, S2>, A>> ansTransitions, TransitionSystem<S, A, P> ts, Transition<Pair<S1, S2>, A> tra, S sameState, boolean first){
-        Set<S> postWithAction = post(ts, sameState, tra.getAction());
-        Transition<Pair<S1, S2>, A> toInsert;
-
-        if(postWithAction.size() > 0){
-            ansTransitions.remove(tra);
-            for(S postState : postWithAction){
-                if(first) toInsert = new Transition<>(tra.getFrom(), tra.getAction(), new Pair<>((S1)postState, tra.getTo().second));
-                else toInsert = new Transition<>(tra.getFrom(), tra.getAction(), new Pair<>(tra.getTo().first, (S2)postState));
-                ansTransitions.add(toInsert);
-            }
-        }
+        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement interleave
     }
 
     @Override
