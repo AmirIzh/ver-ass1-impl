@@ -8,6 +8,8 @@ import il.ac.bgu.cs.fvm.circuits.Circuit;
 import il.ac.bgu.cs.fvm.exceptions.ActionNotFoundException;
 import il.ac.bgu.cs.fvm.exceptions.StateNotFoundException;
 import il.ac.bgu.cs.fvm.ltl.LTL;
+import il.ac.bgu.cs.fvm.nanopromela.NanoPromelaFileReader;
+import il.ac.bgu.cs.fvm.nanopromela.NanoPromelaParser;
 import il.ac.bgu.cs.fvm.programgraph.ActionDef;
 import il.ac.bgu.cs.fvm.programgraph.ConditionDef;
 import il.ac.bgu.cs.fvm.programgraph.PGTransition;
@@ -17,8 +19,11 @@ import il.ac.bgu.cs.fvm.transitionsystem.Transition;
 import il.ac.bgu.cs.fvm.transitionsystem.TransitionSystem;
 import il.ac.bgu.cs.fvm.util.Pair;
 import il.ac.bgu.cs.fvm.verification.VerificationResult;
+import org.antlr.v4.runtime.tree.ParseTree;
+
 import java.io.InputStream;
 import java.util.*;
+
 
 /**
  * Implement the methods in this class. You may add additional classes as you
@@ -545,7 +550,6 @@ public class FvmFacadeImpl implements FvmFacade {
         TransitionSystem<Pair<Map<String, Boolean>, Map<String, Boolean>>, Map<String, Boolean>, Object> ansTS = new TransitionSystemImpl<>();
         Set<Pair<Map<String, Boolean>, Map<String, Boolean>>> states = new HashSet<>();
         Map<String, Boolean> regMap;
-        Set<Map<String, Boolean>> actions = new HashSet<>();
         Set<Pair<Map<String, Boolean>, Map<String, Boolean>>> statesCopy;
         Set<String> inputs = c.getInputPortNames(), registers = c.getRegisterNames(), outputs = c.getOutputPortNames();
         Pair<Map<String, Boolean>, Map<String, Boolean>> newState;
@@ -711,23 +715,172 @@ public class FvmFacadeImpl implements FvmFacade {
     }
 
     @Override
-    public <Sts, Saut, A, P> TransitionSystem<Pair<Sts, Saut>, A, Saut> product(TransitionSystem<Sts, A, P> ts, Automaton<Saut, P> aut) {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement product
-    }
-
-    @Override
     public ProgramGraph<String, String> programGraphFromNanoPromela(String filename) throws Exception {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement programGraphFromNanoPromela
+        ProgramGraph<String, String> ansPG = new ProgramGraphImpl<>();
+        NanoPromelaParser.StmtContext root = NanoPromelaFileReader.pareseNanoPromelaFile(filename);
+        String rootTXT = root.getText();
+
+        ansPG.addLocation("");
+        ansPG.addLocation(rootTXT);
+        ansPG.setInitial(rootTXT, true);
+        PGFromNP(ansPG, root, rootTXT, "", "", "");
+
+        return ansPG;
     }
 
     @Override
     public ProgramGraph<String, String> programGraphFromNanoPromelaString(String nanopromela) throws Exception {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement programGraphFromNanoPromelaString
+        ProgramGraph<String, String> ansPG = new ProgramGraphImpl<>();
+        NanoPromelaParser.StmtContext root = NanoPromelaFileReader.pareseNanoPromelaString(nanopromela);
+        String rootTXT = root.getText();
+
+        ansPG.addLocation("");
+        ansPG.addLocation(rootTXT);
+        ansPG.setInitial(rootTXT, true);
+        PGFromNP(ansPG, root, rootTXT, "", "", "");
+
+        return ansPG;
     }
 
     @Override
     public ProgramGraph<String, String> programGraphFromNanoPromela(InputStream inputStream) throws Exception {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement programGraphFromNanoPromela
+        ProgramGraph<String, String> ansPG = new ProgramGraphImpl<>();
+        NanoPromelaParser.StmtContext root = NanoPromelaFileReader.parseNanoPromelaStream(inputStream);
+        String rootTXT = root.getText();
+
+        ansPG.addLocation("");
+        ansPG.addLocation(rootTXT);
+        ansPG.setInitial(rootTXT, true);
+        PGFromNP(ansPG, root, rootTXT, "", "", "");
+
+        return ansPG;
+    }
+
+    private void PGFromNP(ProgramGraph<String, String> ansPG, ParseTree myRoot, String fromNode, String toNode, String cond, String post_np){
+        int childCount = myRoot.getChildCount();
+        String child;
+
+        if(myRoot instanceof NanoPromelaParser.IfstmtContext)
+            processIf(ansPG, myRoot, fromNode, toNode, cond, post_np);
+        else if(myRoot instanceof NanoPromelaParser.DostmtContext)
+            processDo(ansPG, myRoot, fromNode, toNode, cond, post_np);
+        else if(!(myRoot instanceof NanoPromelaParser.StmtContext))
+            processOtherCase(ansPG, myRoot, fromNode, toNode, cond, post_np);
+        else if(childCount > 1){
+            child = myRoot.getChild(1).getText();
+            if(child.equals(";"))
+                processStmt(ansPG, myRoot, fromNode, toNode, cond, post_np);
+        }
+        else
+            PGFromNP(ansPG, myRoot.getChild(0), fromNode, toNode, cond, post_np);
+    }
+
+    private void processIf(ProgramGraph<String, String> ansPG, ParseTree myRoot, String fromNode, String toNode, String cond, String post_np){
+        int rootChildNum = myRoot.getChildCount() - 1;
+        String ansCond, bracketsCond, ifCond;
+        ParseTree child;
+
+        for(int i = 1; i < rootChildNum; i++){
+            child = myRoot.getChild(i).getChild(3);
+            bracketsCond = "(" + cond + ")";
+            ifCond = "(" + myRoot.getChild(i).getChild(1).getText() + ")";
+
+            if(bracketsCond.equals("()"))
+                ansCond = ifCond;
+            else if(ifCond.equals("()"))
+                ansCond = bracketsCond;
+            else
+                ansCond = bracketsCond + " && " + ifCond;
+
+            PGFromNP(ansPG, child, fromNode, toNode, ansCond, post_np);
+        }
+    }
+
+    private <L, A> void processDo(ProgramGraph<String, String> ansPG, ParseTree myRoot, String fromNode, String toNode, String cond, String post_np){
+        int rootChildNum = myRoot.getChildCount() - 1;
+        String neg = "", ansCond, fromTransAns, rootTXT = myRoot.getText(), from_trans3 = toNode + post_np, consitionTransAns, notBracketsNeg;
+
+        for(int i = 1; i < rootChildNum; i++){
+            DoHelper(ansPG, myRoot, fromNode, toNode, cond, post_np, i);
+            ansCond = myRoot.getChild(i).getChild(1).getText();
+            neg = "(" + ansCond + ")";
+        }
+
+        if(rootTXT.equals("") || rootTXT.equals("()")) fromTransAns = from_trans3;
+        else if(from_trans3.equals("") || from_trans3.equals("()")) fromTransAns = rootTXT;
+        else fromTransAns = rootTXT + ";" + from_trans3;
+
+        notBracketsNeg = "(!(" + neg + "))";
+        if(cond.equals("") || cond.equals("()")) consitionTransAns = notBracketsNeg;
+        else if(notBracketsNeg.equals("()")) consitionTransAns = cond;
+        else consitionTransAns = cond + " && " + notBracketsNeg;
+
+        PGTransition<L, A> trans_pg = new PGTransition<>((L)fromTransAns, notBracketsNeg, (A) "", (L)(toNode + post_np));
+        ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg.getFrom());
+        ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg.getTo());
+        ((ProgramGraph<L, A>) ansPG).addTransition(trans_pg);
+
+        PGTransition<L, A> trans_pg1 = new PGTransition<>((L)fromNode, consitionTransAns, (A) "", (L)(toNode + post_np));
+        ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg1.getFrom());
+        ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg1.getTo());
+        ((ProgramGraph<L, A>) ansPG).addTransition(trans_pg1);
+    }
+
+    private void DoHelper(ProgramGraph<String, String> ansPG, ParseTree myRoot, String fromNode, String toNode, String cond, String post_np, int i){
+        String ansCond = myRoot.getChild(i).getChild(1).getText();
+        ParseTree child = myRoot.getChild(i).getChild(3);
+        String rootTXT = myRoot.getText(), ansPost, bracketsCond, cond3, ansCondUpdate, ansFrom, ansFromFinal;
+
+        if(rootTXT.equals("") || rootTXT.equals("()")) ansPost = post_np;
+        else if(post_np.equals("") || post_np.equals("()")) ansPost = rootTXT;
+        else ansPost = rootTXT + ";" + post_np;
+
+        bracketsCond = "(" + cond + ")";
+        cond3 = "(" + ansCond + ")";
+        if(bracketsCond.equals("()")) ansCondUpdate = cond3;
+        else if(cond3.equals("()")) ansCondUpdate = bracketsCond;
+        else ansCondUpdate = bracketsCond + " && " + cond3;
+
+        if(rootTXT.equals("") || rootTXT.equals("()")) ansFrom = toNode;
+        else if(toNode.equals("") || toNode.equals("()")) ansFrom = rootTXT;
+        else ansFrom = rootTXT + ";" + toNode;
+
+        if(ansFrom.equals("") || ansFrom.equals("()")) ansFromFinal = post_np;
+        else if(post_np.equals("") || post_np.equals("()")) ansFromFinal = ansFrom;
+        else ansFromFinal = ansFrom + ";" + post_np;
+
+        PGFromNP(ansPG, child, fromNode, toNode, ansCondUpdate, ansPost);
+        PGFromNP(ansPG, child, ansFromFinal, toNode, cond3, ansPost);
+    }
+
+    private <L, A> void processOtherCase(ProgramGraph<String, String> ansPG, ParseTree myRoot, String fromNode, String toNode, String cond, String post_np) {
+        String to_ans;
+
+        if(toNode.equals("") || toNode.equals("()")) to_ans = post_np;
+        else if(post_np.equals("") || post_np.equals("()")) to_ans = toNode;
+        else to_ans = toNode + ";" + post_np;
+
+        PGTransition<L, A> trans_pg = new PGTransition<>((L)fromNode, cond, (A)myRoot.getText(), (L)to_ans);
+        ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg.getFrom());
+        ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg.getTo());
+        ((ProgramGraph<L, A>) ansPG).addTransition(trans_pg);
+    }
+
+    private void processStmt(ProgramGraph<String, String> ansPG, ParseTree myRoot, String fromNode, String toNode, String cond, String post_np){
+        ParseTree child0 = myRoot.getChild(0), child2 = myRoot.getChild(2);
+        String child2TXT = child2.getText(), post_ans;
+
+        if(child2TXT.equals("") || child2TXT.equals("()")) post_ans = post_np;
+        else if(post_np.equals("") || post_np.equals("()")) post_ans = child2TXT;
+        else post_ans = child2TXT + ";" + post_np;
+
+        PGFromNP(ansPG, child0, fromNode, toNode, cond, post_ans);
+        PGFromNP(ansPG, child2, post_ans, toNode, "", post_np);
+        }
+
+    @Override
+    public <Sts, Saut, A, P> TransitionSystem<Pair<Sts, Saut>, A, Saut> product(TransitionSystem<Sts, A, P> ts, Automaton<Saut, P> aut) {
+        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement product
     }
 
     @Override
