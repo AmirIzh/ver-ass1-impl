@@ -655,22 +655,31 @@ public class FvmFacadeImpl implements FvmFacade {
 
         // get all initial assignments
         Set<Map<String, Object>> initialAssignments = new HashSet<>();
-        for (List<String> initialization : pg.getInitalizations()) {
-            Map<String, Object> assignment = new HashMap<>();
-            for (String varInit : initialization) {
-                assignment = ActionDef.effect(actionDefs, assignment, varInit); //The varInit here is the "action"
+        if(pg.getInitalizations().size() > 0){
+            for (List<String> initialization : pg.getInitalizations()) {
+                Map<String, Object> assignment = new HashMap<>();
+                for (String varInit : initialization) {
+                    assignment = ActionDef.effect(actionDefs, assignment, varInit); //The varInit here is the "action"
+                }
+                initialAssignments.add(assignment);
             }
-            initialAssignments.add(assignment);
         }
 
         // Set initial States to the transitionSystem
-        for(L initLoc : pg.getInitialLocations()){
-            for(Map<String, Object> initAss: initialAssignments) {
-                Pair<L, Map<String, Object>> state = new Pair<>(initLoc, initAss);
-                transitionSystem.addState(state);
-                transitionSystem.setInitial(state, true);
+            for(L initLoc : pg.getInitialLocations()){
+                if(pg.getInitalizations().size() > 0){
+                    for(Map<String, Object> initAss: initialAssignments) {
+                        Pair<L, Map<String, Object>> state = new Pair<>(initLoc, initAss);
+                        transitionSystem.addState(state);
+                        transitionSystem.setInitial(state, true);
+                    }
+                }
+                else{
+                    Pair<L, Map<String, Object>> state = new Pair<>(initLoc, new HashMap<>());
+                    transitionSystem.addState(state);
+                    transitionSystem.setInitial(state, true);
+                }
             }
-        }
 
         Set<Pair<L, Map<String, Object>>> currStates = new HashSet<>(transitionSystem.getInitialStates());
         while(!currStates.isEmpty()){
@@ -798,24 +807,27 @@ public class FvmFacadeImpl implements FvmFacade {
 
     private <L, A> void processDo(ProgramGraph<String, String> ansPG, ParseTree myRoot, String fromNode, String toNode, String cond, String post_np){
         int rootChildNum = myRoot.getChildCount() - 1;
-        String neg = "", ansCond, fromTransAns, rootTXT = myRoot.getText(), from_trans3 = toNode + post_np, consitionTransAns, notBracketsNeg;
+        String ansCond, fromTransAns, rootTXT = myRoot.getText(), from_trans3 = toNode + post_np, consitionTransAns, doConds = "", switchedCond, finishDoCond = "";
 
         for(int i = 1; i < rootChildNum; i++){
             DoHelper(ansPG, myRoot, fromNode, toNode, cond, post_np, i);
             ansCond = myRoot.getChild(i).getChild(1).getText();
-            neg = "(" + ansCond + ")";
+            switchedCond = switchCondition(ansCond);
+            finishDoCond = finishDoCond + switchedCond + " && ";
+            doConds = doConds + "(" + ansCond + ") || ";
         }
+        doConds = doConds.substring(0, doConds.length() - 4);
+        finishDoCond = finishDoCond.substring(0, finishDoCond.length() - 4);
 
         if(rootTXT.equals("") || rootTXT.equals("()")) fromTransAns = from_trans3;
         else if(from_trans3.equals("") || from_trans3.equals("()")) fromTransAns = rootTXT;
         else fromTransAns = rootTXT + ";" + from_trans3;
 
-        notBracketsNeg = "(!(" + neg + "))";
-        if(cond.equals("") || cond.equals("()")) consitionTransAns = notBracketsNeg;
-        else if(notBracketsNeg.equals("()")) consitionTransAns = cond;
-        else consitionTransAns = cond + " && " + notBracketsNeg;
+        if(cond.equals("") || cond.equals("()")) consitionTransAns = finishDoCond;
+        else if(finishDoCond.equals("")) consitionTransAns = cond;
+        else consitionTransAns = cond + " && (!(" + doConds + "))";
 
-        PGTransition<L, A> trans_pg = new PGTransition<>((L)fromTransAns, notBracketsNeg, (A) "", (L)(toNode + post_np));
+        PGTransition<L, A> trans_pg = new PGTransition<>((L)fromTransAns, finishDoCond, (A) "", (L)(toNode + post_np));
         ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg.getFrom());
         ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg.getTo());
         ((ProgramGraph<L, A>) ansPG).addTransition(trans_pg);
@@ -824,6 +836,35 @@ public class FvmFacadeImpl implements FvmFacade {
         ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg1.getFrom());
         ((ProgramGraph<L, A>) ansPG).addLocation(trans_pg1.getTo());
         ((ProgramGraph<L, A>) ansPG).addTransition(trans_pg1);
+    }
+
+    private String switchCondition(String cond){
+        StringBuilder SB = new StringBuilder();
+
+        for(int i = 0; i < cond.length(); i++){
+            if(cond.charAt(i) == '>' && cond.charAt(i + 1) == '='){
+                SB.append('<');
+                i++;
+            }
+            else if(cond.charAt(i) == '<' && cond.charAt(i + 1) == '='){
+                SB.append('>');
+                i++;
+            }
+            else if(cond.charAt(i) == '>')
+                SB.append("<=");
+            else if(cond.charAt(i) == '<')
+                SB.append(">=");
+            else if(cond.charAt(i) == '=' && cond.charAt(i + 1) == '='){
+                SB.append("!=");
+                i++;
+            }
+            else if(cond.charAt(i) == 't' && cond.charAt(i + 1) == 'r' && cond.charAt(i + 2) == 'u' && cond.charAt(i + 3) == 'e'){
+                SB.append("!true");
+                i += 3;
+            }
+            else SB.append(cond.charAt(i));
+        }
+        return SB.toString();
     }
 
     private void DoHelper(ProgramGraph<String, String> ansPG, ParseTree myRoot, String fromNode, String toNode, String cond, String post_np, int i){
@@ -839,7 +880,7 @@ public class FvmFacadeImpl implements FvmFacade {
         cond3 = "(" + ansCond + ")";
         if(bracketsCond.equals("()")) ansCondUpdate = cond3;
         else if(cond3.equals("()")) ansCondUpdate = bracketsCond;
-        else ansCondUpdate = bracketsCond + " && " + cond3;
+        else ansCondUpdate = cond + " && (" + cond3 + ")";
 
         if(rootTXT.equals("") || rootTXT.equals("()")) ansFrom = toNode;
         else if(toNode.equals("") || toNode.equals("()")) ansFrom = rootTXT;
@@ -868,15 +909,15 @@ public class FvmFacadeImpl implements FvmFacade {
 
     private void processStmt(ProgramGraph<String, String> ansPG, ParseTree myRoot, String fromNode, String toNode, String cond, String post_np){
         ParseTree child0 = myRoot.getChild(0), child2 = myRoot.getChild(2);
-        String child2TXT = child2.getText(), post_ans;
+        String child2TXT = child2.getText(), ansPost;
 
-        if(child2TXT.equals("") || child2TXT.equals("()")) post_ans = post_np;
-        else if(post_np.equals("") || post_np.equals("()")) post_ans = child2TXT;
-        else post_ans = child2TXT + ";" + post_np;
+        if(child2TXT.equals("") || child2TXT.equals("()")) ansPost = post_np;
+        else if(post_np.equals("") || post_np.equals("()")) ansPost = child2TXT;
+        else ansPost = child2TXT + ";" + post_np;
 
-        PGFromNP(ansPG, child0, fromNode, toNode, cond, post_ans);
-        PGFromNP(ansPG, child2, post_ans, toNode, "", post_np);
-        }
+        PGFromNP(ansPG, child0, fromNode, toNode, cond, ansPost);
+        PGFromNP(ansPG, child2, ansPost, toNode, "", post_np);
+    }
 
     @Override
     public <Sts, Saut, A, P> TransitionSystem<Pair<Sts, Saut>, A, Saut> product(TransitionSystem<Sts, A, P> ts, Automaton<Saut, P> aut) {
