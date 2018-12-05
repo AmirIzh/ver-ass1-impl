@@ -775,10 +775,10 @@ public class FvmFacadeImpl implements FvmFacade {
                             for (int j = i + 1; j < programGraphs.size(); j++) {
                                 Set<PGTransition<L, A>> transitions2 = programGraphs.get(j).getTransitions();
                                 for (PGTransition<L, A> transition2 : transitions2) {
-                                    String actions = transition.getAction().toString() + "|" + transition2.getAction().toString();
                                     String trans1Str = transition.getAction().toString();
                                     String trans2Str = transition2.getAction().toString();
-                                    if (interleavingActDef.isMatchingAction(actions) && trans1Str.substring(1,trans1Str.length()-1).equals(trans2Str.substring(1,trans2Str.length()-1))) {
+                                    String actions = trans1Str + "|" + trans2Str;
+                                    if (interleavingActDef.isMatchingAction(actions) && trans1Str.substring(0,trans1Str.length()-1).equals(trans2Str.substring(0,trans2Str.length()-1))) {
                                         Map<String, Object> assignments = interleavingActDef.effect(currState.getSecond(), actions);
                                         if(assignments != null) {
                                             ArrayList<L> newStatesList = new ArrayList<>(currState.getFirst());
