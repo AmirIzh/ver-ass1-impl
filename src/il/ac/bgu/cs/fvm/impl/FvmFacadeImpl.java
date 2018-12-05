@@ -4,16 +4,14 @@ import il.ac.bgu.cs.fvm.FvmFacade;
 import il.ac.bgu.cs.fvm.automata.Automaton;
 import il.ac.bgu.cs.fvm.automata.MultiColorAutomaton;
 import il.ac.bgu.cs.fvm.channelsystem.ChannelSystem;
+import il.ac.bgu.cs.fvm.channelsystem.ParserBasedInterleavingActDef;
 import il.ac.bgu.cs.fvm.circuits.Circuit;
 import il.ac.bgu.cs.fvm.exceptions.ActionNotFoundException;
 import il.ac.bgu.cs.fvm.exceptions.StateNotFoundException;
 import il.ac.bgu.cs.fvm.ltl.LTL;
 import il.ac.bgu.cs.fvm.nanopromela.NanoPromelaFileReader;
 import il.ac.bgu.cs.fvm.nanopromela.NanoPromelaParser;
-import il.ac.bgu.cs.fvm.programgraph.ActionDef;
-import il.ac.bgu.cs.fvm.programgraph.ConditionDef;
-import il.ac.bgu.cs.fvm.programgraph.PGTransition;
-import il.ac.bgu.cs.fvm.programgraph.ProgramGraph;
+import il.ac.bgu.cs.fvm.programgraph.*;
 import il.ac.bgu.cs.fvm.transitionsystem.AlternatingSequence;
 import il.ac.bgu.cs.fvm.transitionsystem.Transition;
 import il.ac.bgu.cs.fvm.transitionsystem.TransitionSystem;
@@ -720,7 +718,165 @@ public class FvmFacadeImpl implements FvmFacade {
 
     @Override
     public <L, A> TransitionSystem<Pair<List<L>, Map<String, Object>>, A, String> transitionSystemFromChannelSystem(ChannelSystem<L, A> cs) {
-        throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement transitionSystemFromChannelSystem
+        TransitionSystem<Pair<List<L>, Map<String, Object>>, A, String> transitionSystem = createTransitionSystem();
+        List<ProgramGraph<L,A>> programGraphs = cs.getProgramGraphs();
+        Set<List<L>> initialStatesProducts = generateInitialStatesProductRec(programGraphs);
+        Set<List<String>> initializationsProducts = generateInitializationsProduct(programGraphs);
+        ParserBasedActDef actDef = new ParserBasedActDef();
+
+        for(List<L> initialState: initialStatesProducts) {
+            if(!initializationsProducts.isEmpty()) {
+                for (List<String> initializationProduct : initializationsProducts) {
+                    Map<String, Object> assignment = new HashMap<>();
+                    for (String init : initializationProduct) {
+                        assignment = actDef.effect(assignment, init);
+                    }
+                    Pair<List<L>, Map<String, Object>> initialStateToAdd = new Pair<>(initialState, assignment);
+                    transitionSystem.addState(initialStateToAdd);
+                    transitionSystem.setInitial(initialStateToAdd, true);
+                }
+            }
+            else{
+                Map<String, Object> assignment = new HashMap<>();
+                Pair<List<L>, Map<String, Object>> initialStateToAdd = new Pair<>(initialState, assignment);
+                transitionSystem.addState(initialStateToAdd);
+                transitionSystem.setInitial(initialStateToAdd, true);
+            }
+        }
+
+        ParserBasedCondDef condDef = new ParserBasedCondDef();
+        ParserBasedInterleavingActDef interleavingActDef = new ParserBasedInterleavingActDef();
+
+        Set<Pair<List<L>, Map<String, Object>>> currStates = new HashSet<>(transitionSystem.getInitialStates());
+        while(!currStates.isEmpty()){
+            Pair<List<L>, Map<String, Object>> currState = currStates.iterator().next();
+            for(L loc: currState.getFirst()){
+                transitionSystem.addAtomicProposition(loc.toString());
+            }
+            for(int i = 0; i < programGraphs.size(); i++){
+                Set<PGTransition<L, A>> transitions = programGraphs.get(i).getTransitions();
+                for (PGTransition<L, A> transition : transitions){
+                    if (currState.getFirst().get(i).equals(transition.getFrom()) && condDef.evaluate(currState.getSecond(), transition.getCondition())) {
+                        if (!interleavingActDef.isOneSidedAction(transition.getAction().toString())) {
+                            Map<String, Object> assignments = actDef.effect(currState.getSecond(), transition.getAction());
+                            if(assignments!=null) {
+                                ArrayList<L> newStatesList = new ArrayList<>(currState.getFirst());
+                                newStatesList.set(i, transition.getTo());
+                                Pair<List<L>, Map<String, Object>> stateToAdd = new Pair<>(newStatesList, assignments);
+                                if (!transitionSystem.getStates().contains(stateToAdd)) {
+                                    currStates.add(stateToAdd);
+                                }
+                                transitionSystem.addState(stateToAdd);
+                                Transition<Pair<List<L>, Map<String, Object>>, A> newTransition = new Transition<>(currState, transition.getAction(), stateToAdd);
+                                transitionSystem.addAction(newTransition.getAction());
+                                transitionSystem.addTransition(newTransition);
+                            }
+                        } else {
+                            for (int j = i + 1; j < programGraphs.size(); j++) {
+                                Set<PGTransition<L, A>> transitions2 = programGraphs.get(j).getTransitions();
+                                for (PGTransition<L, A> transition2 : transitions2) {
+                                    String actions = transition.getAction().toString() + "|" + transition2.getAction().toString();
+                                    String trans1Str = transition.getAction().toString();
+                                    String trans2Str = transition2.getAction().toString();
+                                    if (interleavingActDef.isMatchingAction(actions) && trans1Str.substring(1,trans1Str.length()-1).equals(trans2Str.substring(1,trans2Str.length()-1))) {
+                                        Map<String, Object> assignments = interleavingActDef.effect(currState.getSecond(), actions);
+                                        if(assignments != null) {
+                                            ArrayList<L> newStatesList = new ArrayList<>(currState.getFirst());
+                                            newStatesList.set(i, transition.getTo());
+                                            newStatesList.set(j, transition2.getTo());
+                                            Pair<List<L>, Map<String, Object>> stateToAdd = new Pair<>(newStatesList, assignments);
+                                            if (!transitionSystem.getStates().contains(stateToAdd)) {
+                                                currStates.add(stateToAdd);
+                                            }
+                                            Transition<Pair<List<L>, Map<String, Object>>, A> newTransition = new Transition<>(currState, (A) actions, stateToAdd);
+                                            transitionSystem.addState(stateToAdd);
+                                            transitionSystem.addAction(newTransition.getAction());
+                                            transitionSystem.addTransition(newTransition);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            currStates.remove(currState);
+        }
+
+        for(Pair<List<L>, Map<String, Object>> state: transitionSystem.getStates()){
+            for(L loc: state.getFirst()) {
+                transitionSystem.addToLabel(state,loc.toString());
+                for (String var : state.getSecond().keySet()) {
+                    String varAssignmentExp = var + " = " + state.getSecond().get(var);
+                    transitionSystem.addAtomicProposition(varAssignmentExp);
+                    transitionSystem.addToLabel(state, varAssignmentExp);
+                }
+            }
+        }
+        return transitionSystem;
+    }
+
+    private <A, L> Set<List<String>> generateInitializationsProduct(List<ProgramGraph<L,A>> programGraphs) {
+        Set<List<String>> initializationsProduct = new HashSet<>();
+        if(!programGraphs.isEmpty()){
+            List<ProgramGraph<L,A>> programGraphsCopy = new LinkedList<>(programGraphs);
+            ProgramGraph<L,A> pg1 = programGraphsCopy.remove(0);
+            if(pg1.getInitalizations().isEmpty()){
+                for(List<String> initializationList: generateInitializationsProduct(programGraphsCopy)){
+                    List<String> initialLocationsProduct = new LinkedList<>(initializationList);
+                    initializationsProduct.add(initialLocationsProduct);
+                }
+            }
+            else{
+                for (List<String> initialization : pg1.getInitalizations()) {
+                    if(programGraphsCopy.isEmpty()){
+                        List<String> initialLocationsProduct = new LinkedList<>(initialization);
+                        initializationsProduct.add(initialLocationsProduct);
+                    }
+                    else{
+                        for(List<String> initializationList: generateInitializationsProduct(programGraphsCopy)){
+                            List<String> initialLocationsProduct = new LinkedList<>();
+                            initialLocationsProduct.addAll(initialization);
+                            initialLocationsProduct.addAll(initializationList);
+                            initializationsProduct.add(initialLocationsProduct);
+                        }
+                    }
+                }
+            }
+        }
+        return initializationsProduct;
+    }
+
+    private <L, A> Set<List<L>> generateInitialStatesProductRec(List<ProgramGraph<L,A>> programGraphs) {
+        Set<List<L>> initialLocationsProducts = new HashSet<>();
+        if(!programGraphs.isEmpty()){
+            List<ProgramGraph<L,A>> programGraphsCopy = new LinkedList<>(programGraphs);
+            ProgramGraph<L,A> pg1 = programGraphsCopy.remove(0);
+            if(pg1.getInitialLocations().isEmpty()){
+                for(List<L> statesProductList: generateInitialStatesProductRec(programGraphsCopy)){
+                    List<L> initialLocationsProduct = new LinkedList<>(statesProductList);
+                    initialLocationsProducts.add(initialLocationsProduct);
+                }
+            }
+            else{
+                for (L initialLocation : pg1.getInitialLocations()) {
+                    if(programGraphsCopy.isEmpty()){
+                        List<L> initialLocationsProduct = new LinkedList<>();
+                        initialLocationsProduct.add(initialLocation);
+                        initialLocationsProducts.add(initialLocationsProduct);
+                    }
+                    else {
+                        for (List<L> statesProductList : generateInitialStatesProductRec(programGraphsCopy)) {
+                            List<L> initialLocationsProduct = new LinkedList<>();
+                            initialLocationsProduct.add(initialLocation);
+                            initialLocationsProduct.addAll(statesProductList);
+                            initialLocationsProducts.add(initialLocationsProduct);
+                        }
+                    }
+                }
+            }
+        }
+        return initialLocationsProducts;
     }
 
     @Override
@@ -938,5 +1094,5 @@ public class FvmFacadeImpl implements FvmFacade {
     public <L> Automaton<?, L> GNBA2NBA(MultiColorAutomaton<?, L> mulAut) {
         throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement GNBA2NBA
     }
-   
+
 }
